@@ -32,8 +32,15 @@ if [ ! -x "$VENV/bin/agent-reach" ]; then
   "$VENV/bin/pip" install --quiet "https://github.com/Panniantong/agent-reach/archive/main.zip"
 fi
 
+# bilibili-cli upgrades the Bilibili channel from the basic search API to full
+# search + video detail (no login required).
+if [ ! -x "$VENV/bin/bili" ]; then
+  "$VENV/bin/pip" install --quiet bilibili-cli || true
+fi
+
 ln -sf "$VENV/bin/agent-reach" "$BIN/agent-reach"
 ln -sf "$VENV/bin/yt-dlp" "$BIN/yt-dlp"
+[ -x "$VENV/bin/bili" ] && ln -sf "$VENV/bin/bili" "$BIN/bili"
 
 # Provision/refresh upstream infrastructure (gh CLI, mcporter, Exa search,
 # yt-dlp JS runtime) and activate the zero-config channels. Never fail the
