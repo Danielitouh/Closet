@@ -40,4 +40,20 @@ ln -sf "$VENV/bin/yt-dlp" "$BIN/yt-dlp"
 # session start if a single backend can't be reached.
 agent-reach install --env=auto >/dev/null 2>&1 || true
 
+# The installer registers Exa in a project-local config/mcporter.json (relative
+# to cwd). Mirror it to mcporter's system config so Exa search works regardless
+# of the agent's working directory.
+mkdir -p "$HOME/.mcporter"
+if [ ! -f "$HOME/.mcporter/mcporter.json" ]; then
+  cat > "$HOME/.mcporter/mcporter.json" <<'JSON'
+{
+  "mcpServers": {
+    "exa": {
+      "baseUrl": "https://mcp.exa.ai/mcp"
+    }
+  }
+}
+JSON
+fi
+
 exit 0
