@@ -1,0 +1,3 @@
+# Project-local mcporter config written by `agent-reach install` at runtime.
+# The SessionStart hook mirrors it to ~/.mcporter so it isn't needed in git.
+/config/
