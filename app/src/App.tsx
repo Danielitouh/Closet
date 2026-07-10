@@ -139,6 +139,23 @@ export default function App() {
     [upsertNote, scheduleAutoSync],
   )
 
+  // Create a note without navigating away (used by the editor's [[link]] picker).
+  const createNoteBackground = useCallback(
+    (title: string) => {
+      const t = title.trim()
+      if (!t) return
+      const exists = [...notesRef.current.values()].some(
+        (n) => normalizeTitle(n.title) === normalizeTitle(t),
+      )
+      if (!exists) {
+        upsertNote(t, `# ${t}\n\n`)
+        scheduleAutoSync()
+        showToast(`Created "${t}"`)
+      }
+    },
+    [upsertNote, scheduleAutoSync, showToast],
+  )
+
   const deleteNote = useCallback(
     (title: string) => {
       setNotes((prev) => {
@@ -441,8 +458,11 @@ export default function App() {
           graph={graph}
           focusDepth={focusDepth}
           dirty={selectedNote?.dirty ?? false}
+          noteTitles={noteList.filter((n) => !n.test).map((n) => n.title).sort()}
+          sections={topTags.map(([t]) => t)}
           onChange={(c) => changeNote(selected, c)}
           onCreate={() => createNote(selected)}
+          onCreateBackground={createNoteBackground}
           onDelete={() => deleteNote(selected)}
           onClose={() => { setSelected(null); setFocusDepth(null) }}
           onOpenNote={openNote}

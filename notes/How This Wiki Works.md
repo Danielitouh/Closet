@@ -7,8 +7,9 @@ The 60-second manual. (You can hide this note: Physics & filters → Sections �
 
 ## Writing
 
-- Link notes with `[[Note Title]]` — links are what build the graph. Linking to a note that doesn't exist makes a faded *ghost* node; click it to create the note.
-- Start each note with a section so it gets a color and a place:
+- **Type `/` in the editor** for commands: link a note, create a linked note, set the section, headings, lists, code, and more.
+- **Type `[[` to connect notes** — a picker appears; choose an existing note or create a new one on the spot. Links are what build the graph; a link to a note that doesn't exist yet shows as a faded *ghost* node.
+- Notes get a color and a place from their section — set it with `/section`, or by hand:
 
 ```
 ---

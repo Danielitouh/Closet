@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { WikiGraph } from '../lib/graphData'
 import { renderNoteHtml } from '../lib/markdown'
+import Editor from './Editor'
 
 interface Props {
   title: string
@@ -9,8 +10,11 @@ interface Props {
   graph: WikiGraph
   focusDepth: number | null
   dirty: boolean
+  noteTitles: string[]
+  sections: string[]
   onChange: (content: string) => void
   onCreate: () => void
+  onCreateBackground: (title: string) => void
   onDelete: () => void
   onClose: () => void
   onOpenNote: (title: string) => void
@@ -24,8 +28,11 @@ export default function NotePanel({
   graph,
   focusDepth,
   dirty,
+  noteTitles,
+  sections,
   onChange,
   onCreate,
+  onCreateBackground,
   onDelete,
   onClose,
   onOpenNote,
@@ -110,12 +117,12 @@ export default function NotePanel({
         </div>
       </header>
       {editing ? (
-        <textarea
-          className="note-editor"
+        <Editor
           value={content}
-          autoFocus
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={'Write markdown… link with [[Note Title]]'}
+          noteTitles={noteTitles.filter((t) => t !== title)}
+          sections={sections}
+          onChange={onChange}
+          onCreateNote={onCreateBackground}
         />
       ) : (
         <div ref={previewRef} className="note-body" dangerouslySetInnerHTML={{ __html: html }} />
