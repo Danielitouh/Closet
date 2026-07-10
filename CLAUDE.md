@@ -13,6 +13,16 @@ Notes are plain markdown files in `/notes`, connected with `[[wikilinks]]`
 graph at `https://danielitouh.github.io/Closet/`; every push to `main`
 redeploys it with the current notes baked in as seeds.
 
+### Sections of the brain
+
+The wiki is organized into **sections** — set with frontmatter
+`section: <name>` (falls back to the first tag). A note's section drives its
+color and its filter chip in the app. Current sections: `home`, `guide`,
+`research`, `projects`, `ideas`, `journal`, `reading`; each has a hub note
+(`Research.md`, `Projects.md`, …). The user's brain starts deliberately
+minimal — do not add encyclopedia/demo notes; only file content the user
+asked for.
+
 ### Ingestion workflow ("research X and add it to my wiki")
 
 When asked to research a topic and save it, this is the job — use agent-reach
@@ -20,13 +30,12 @@ to gather, then file notes:
 
 1. Gather with agent-reach (Exa search, Jina reading, YouTube subs, etc.).
 2. Write **one note per idea** (not per source) into `/notes/<Title>.md`:
-   - Start with frontmatter: `---\ntags: [topic]\n---` — the first tag sets
-     the node's color in the graph.
+   - Start with frontmatter: `---\nsection: research\ntags: [topic]\n---`
+     (use another section if the user says so).
    - Include a `Source:` line with the URL for anything drawn from the web.
    - Add at least two `[[wikilinks]]` to related notes (check existing titles
      first with `ls notes/`) so nothing enters the graph as an orphan.
-   - Link new notes from the relevant hub note (`Home`, `AI Tools`,
-     `Research Workflow`, …) when they open a new theme.
+   - Link the topic's main note from the section hub (e.g. `Research.md`).
 3. Keep titles short and noun-like — they are node labels and link text.
 4. Commit and push to deploy. Never delete or rewrite existing notes unless
    asked; append and link instead.

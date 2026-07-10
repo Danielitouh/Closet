@@ -103,6 +103,13 @@ kbd {
 .slider span { width: 90px; }
 .slider input { flex: 1; accent-color: var(--accent); }
 .check { font-size: 12px; color: var(--text-dim); display: flex; gap: 6px; align-items: center; }
+.section-legend h4 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
 .tag-filters { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag-chip {
   display: inline-flex;

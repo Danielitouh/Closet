@@ -1,6 +1,6 @@
 ---
-tags: [reading]
+section: reading
 ---
 # Reading List
 
-Queue of sources waiting for [[Source Triage]]: [[How to Take Smart Notes]], [[Building a Second Brain (book)]], [[The Extended Mind]]. Feed it via [[RSS Feeds]] or by pasting links to Claude.
+Hub for articles, videos, and books waiting to be read — paste a link to Claude to have it summarized into [[Research]].
