@@ -1,24 +1,33 @@
 import { marked } from 'marked'
-import { parseNote } from './parser'
+import { maskCode, parseNote } from './parser'
 
 marked.setOptions({ gfm: true, breaks: true })
+
+const WIKILINK_RE = /\[\[([^\[\]|]+?)(?:\|([^\[\]]+?))?\]\]/g
 
 /**
  * Render note markdown to HTML with [[wikilinks]] converted to clickable
  * elements. Existing targets get .wiki-link, unresolved get .wiki-link.ghost;
- * both carry data-wiki="<target>" for the click handler.
+ * both carry data-wiki="<target>" for the click handler. Links inside code
+ * spans/blocks are left as literal text (matching the graph parser).
  */
 export function renderNoteHtml(raw: string, exists: (title: string) => boolean): string {
   const { body } = parseNote(raw)
-  const withLinks = body.replace(
-    /\[\[([^\[\]|]+?)(?:\|([^\[\]]+?))?\]\]/g,
-    (_m, target: string, alias?: string) => {
-      const t = target.trim()
-      const text = (alias ?? t).trim()
-      const ghost = exists(t) ? '' : ' ghost'
-      const safeTarget = t.replace(/"/g, '&quot;')
-      return `<a class="wiki-link${ghost}" data-wiki="${safeTarget}" href="#">${text}</a>`
-    },
-  )
-  return marked.parse(withLinks) as string
+  // Find link positions on the code-masked text (offsets match the original),
+  // then splice replacements into the original so code content is untouched.
+  const masked = maskCode(body)
+  let out = ''
+  let cursor = 0
+  for (const m of masked.matchAll(WIKILINK_RE)) {
+    const target = m[1].trim()
+    if (!target) continue
+    const text = (m[2] ?? target).trim()
+    const ghost = exists(target) ? '' : ' ghost'
+    const safeTarget = target.replace(/"/g, '&quot;')
+    out += body.slice(cursor, m.index!)
+    out += `<a class="wiki-link${ghost}" data-wiki="${safeTarget}" href="#">${text}</a>`
+    cursor = m.index! + m[0].length
+  }
+  out += body.slice(cursor)
+  return marked.parse(out) as string
 }

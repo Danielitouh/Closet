@@ -12,6 +12,8 @@ export interface ParsedNote {
   tags: string[]
   /** All wikilinks in order of appearance (may contain duplicates). */
   links: WikiLink[]
+  /** Brain section from frontmatter `section:`, falling back to the first tag. */
+  section: string | null
 }
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/
@@ -54,9 +56,20 @@ function parseFrontmatterTags(block: string): string[] {
 
 const WIKILINK_RE = /\[\[([^\[\]|]+?)(?:\|([^\[\]]+?))?\]\]/g
 
+/**
+ * Blank out fenced code blocks (```…```) and inline code spans (`…`) so that
+ * syntax examples in notes don't register as real links or tags. Replacement
+ * preserves string length/offsets.
+ */
+export function maskCode(body: string): string {
+  return body
+    .replace(/```[\s\S]*?(```|$)/g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/`[^`\n]*`/g, (m) => ' '.repeat(m.length))
+}
+
 export function extractLinks(body: string): WikiLink[] {
   const links: WikiLink[] = []
-  for (const m of body.matchAll(WIKILINK_RE)) {
+  for (const m of maskCode(body).matchAll(WIKILINK_RE)) {
     const target = m[1].trim()
     if (!target) continue
     links.push({ target, alias: m[2] !== undefined ? m[2].trim() : null })
@@ -71,23 +84,36 @@ const INLINE_TAG_RE = /(^|\s)#([A-Za-z][\w/-]*)/g
 
 export function extractInlineTags(body: string): string[] {
   const tags: string[] = []
-  for (const m of body.matchAll(INLINE_TAG_RE)) {
+  for (const m of maskCode(body).matchAll(INLINE_TAG_RE)) {
     tags.push(m[2])
   }
   return tags
 }
 
+function parseFrontmatterSection(block: string): string | null {
+  for (const line of block.split(/\r?\n/)) {
+    const m = line.match(/^section\s*:\s*(.+?)\s*$/i)
+    if (m) {
+      const v = m[1].replace(/^["']|["']$/g, '').trim()
+      if (v) return v.toLowerCase()
+    }
+  }
+  return null
+}
+
 export function parseNote(raw: string): ParsedNote {
   let body = raw
   let fmTags: string[] = []
+  let section: string | null = null
   const fm = raw.match(FRONTMATTER_RE)
   if (fm) {
     fmTags = parseFrontmatterTags(fm[1])
+    section = parseFrontmatterSection(fm[1])
     body = raw.slice(fm[0].length)
   }
   const inline = extractInlineTags(body)
   const tags = [...new Set([...fmTags, ...inline].map((t) => t.toLowerCase().replace(/^#/, '')))]
-  return { body, tags, links: extractLinks(body) }
+  return { body, tags, links: extractLinks(body), section: section ?? tags[0] ?? null }
 }
 
 /** Normalize a note title for link resolution (case-insensitive match). */

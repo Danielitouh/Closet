@@ -37,6 +37,22 @@ describe('extractLinks', () => {
   it('handles unicode titles', () => {
     expect(extractLinks('[[小红书研究]]')).toEqual([{ target: '小红书研究', alias: null }])
   })
+
+  it('ignores links inside inline code spans', () => {
+    expect(extractLinks('use `[[Note Title]]` to link, e.g. [[Real]]')).toEqual([
+      { target: 'Real', alias: null },
+    ])
+  })
+
+  it('ignores links inside fenced code blocks', () => {
+    expect(extractLinks('```\n[[Not A Link]]\n```\n[[Yes]]')).toEqual([
+      { target: 'Yes', alias: null },
+    ])
+  })
+
+  it('does not pair brackets across adjacent code spans', () => {
+    expect(extractLinks('brackets: `[[` then `]]` done')).toEqual([])
+  })
 })
 
 describe('extractInlineTags', () => {
@@ -50,6 +66,10 @@ describe('extractInlineTags', () => {
 
   it('does not match mid-word or URL fragments', () => {
     expect(extractInlineTags('https://x.com/a#frag no#tag yes #tag')).toEqual(['tag'])
+  })
+
+  it('ignores tags inside code', () => {
+    expect(extractInlineTags('`#nope` and ```\n#also-no\n``` but #yes')).toEqual(['yes'])
   })
 })
 
@@ -92,6 +112,25 @@ describe('parseNote', () => {
     const p = parseNote('---\r\ntags: [win]\r\n---\r\nbody [[X]]')
     expect(p.tags).toEqual(['win'])
     expect(p.links).toEqual([{ target: 'X', alias: null }])
+  })
+})
+
+describe('sections', () => {
+  it('reads section from frontmatter', () => {
+    const p = parseNote('---\nsection: Research\ntags: [ai]\n---\nx')
+    expect(p.section).toBe('research')
+  })
+
+  it('falls back to the first tag when no section is set', () => {
+    expect(parseNote('---\ntags: [guide, extra]\n---\nx').section).toBe('guide')
+  })
+
+  it('is null with neither section nor tags', () => {
+    expect(parseNote('plain text').section).toBeNull()
+  })
+
+  it('handles quoted section values', () => {
+    expect(parseNote('---\nsection: "My Projects"\n---\nx').section).toBe('my projects')
   })
 })
 

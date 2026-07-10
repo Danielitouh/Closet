@@ -36,8 +36,22 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [controlsOpen, setControlsOpen] = useState(false)
   const [physics, setPhysics] = useState<PhysicsSettings>(DEFAULT_PHYSICS)
-  const [hiddenTags, setHiddenTags] = useState<Set<string>>(new Set())
+  const [hiddenTags, setHiddenTags] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem('closet-wiki-hidden-sections') ?? '[]'))
+    } catch {
+      return new Set()
+    }
+  })
   const [showGhosts, setShowGhosts] = useState(true)
+
+  const setHiddenSections = useCallback((updater: (prev: Set<string>) => Set<string>) => {
+    setHiddenTags((prev) => {
+      const next = updater(prev)
+      localStorage.setItem('closet-wiki-hidden-sections', JSON.stringify([...next]))
+      return next
+    })
+  }, [])
   const [config, setConfig] = useState<SyncConfig>(loadConfig)
   const [syncing, setSyncing] = useState(false)
   const [lastSyncInfo, setLastSyncInfo] = useState('Never synced in this browser.')
@@ -389,25 +403,29 @@ export default function App() {
               Show ghost notes
             </label>
             {topTags.length > 0 && (
-              <div className="tag-filters">
-                {topTags.map(([tag, count]) => (
-                  <button
-                    key={tag}
-                    className={`tag-chip ${hiddenTags.has(tag) ? 'off' : ''}`}
-                    style={{ borderColor: tagColor(tag) }}
-                    onClick={() =>
-                      setHiddenTags((prev) => {
-                        const next = new Set(prev)
-                        if (next.has(tag)) next.delete(tag)
-                        else next.add(tag)
-                        return next
-                      })
-                    }
-                  >
-                    <span className="dot" style={{ background: tagColor(tag) }} />
-                    {tag} <span className="count">{count}</span>
-                  </button>
-                ))}
+              <div className="section-legend">
+                <h4>Sections</h4>
+                <div className="tag-filters">
+                  {topTags.map(([tag, count]) => (
+                    <button
+                      key={tag}
+                      className={`tag-chip ${hiddenTags.has(tag) ? 'off' : ''}`}
+                      style={{ borderColor: tagColor(tag) }}
+                      title={hiddenTags.has(tag) ? 'Show this section' : 'Hide this section'}
+                      onClick={() =>
+                        setHiddenSections((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(tag)) next.delete(tag)
+                          else next.add(tag)
+                          return next
+                        })
+                      }
+                    >
+                      <span className="dot" style={{ background: tagColor(tag) }} />
+                      {tag} <span className="count">{count}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             <button className="btn subtle" onClick={() => graphRef.current?.zoomToFit()}>Fit view</button>
