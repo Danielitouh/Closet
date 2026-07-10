@@ -15,7 +15,7 @@ const SECRET_BYTES = 20
 const PBKDF2_ITERATIONS = 210_000
 const TOTP_STEP_SECONDS = 30
 const TOTP_DIGITS = 6
-const TOTP_WINDOW = 1
+const TOTP_WINDOW = 4
 
 const encoder = new TextEncoder()
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
@@ -56,7 +56,7 @@ export function formatTotpSecret(secret: string): string {
 }
 
 export function getOtpAuthUrl(secret: string): string {
-  const label = encodeURIComponent(`${ISSUER}:${ACCOUNT}`)
+  const label = `${encodeURIComponent(ISSUER)}:${encodeURIComponent(ACCOUNT)}`
   const params = new URLSearchParams({
     secret,
     issuer: ISSUER,
@@ -103,7 +103,7 @@ export async function verifyTotp(secret: string, code: string, at = Date.now()):
   const normalized = normalizeCode(code)
   if (!/^\d{6}$/.test(normalized)) return false
   const counter = Math.floor(at / 1000 / TOTP_STEP_SECONDS)
-  for (let offset = -TOTP_WINDOW; offset <= TOTP_WINDOW; offset++) {
+  for (const offset of getVerificationOffsets(TOTP_WINDOW)) {
     const expected = await totp(secret, counter + offset)
     if (timingSafeEqual(expected, normalized)) return true
   }
@@ -178,7 +178,13 @@ async function decryptSecret(key: CryptoKey, ciphertext: string, iv: string): Pr
 }
 
 function normalizeCode(code: string): string {
-  return code.replace(/\s+/g, '')
+  return code.replace(/[\s-]+/g, '')
+}
+
+function getVerificationOffsets(window: number): number[] {
+  const offsets = [0]
+  for (let i = 1; i <= window; i++) offsets.push(-i, i)
+  return offsets
 }
 
 function base32Encode(bytes: Uint8Array): string {

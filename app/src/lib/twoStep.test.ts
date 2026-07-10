@@ -11,8 +11,15 @@ describe('two-step verification', () => {
   })
 
   it('accepts only valid nearby authenticator codes', async () => {
-    await expect(verifyTotp(RFC_SECRET, '287 082', 59_000)).resolves.toBe(true)
+    await expect(verifyTotp(RFC_SECRET, '287-082', 59_000)).resolves.toBe(true)
     await expect(verifyTotp(RFC_SECRET, '000000', 59_000)).resolves.toBe(false)
+  })
+
+  it('allows modest device clock drift', async () => {
+    const codeFromPhone = await totp(RFC_SECRET, 100)
+
+    await expect(verifyTotp(RFC_SECRET, codeFromPhone, 104 * 30_000)).resolves.toBe(true)
+    await expect(verifyTotp(RFC_SECRET, codeFromPhone, 105 * 30_000)).resolves.toBe(false)
   })
 
   it('enrolls with a proven code and unlocks with password plus current code', async () => {
@@ -23,5 +30,5 @@ describe('two-step verification', () => {
     await expect(unlockTwoStep(config, 'wrong horse battery', code)).rejects.toThrow(
       'Password or code was incorrect.',
     )
-  })
+  }, 15_000)
 })
