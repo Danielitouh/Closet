@@ -1,11 +1,17 @@
 import { useState } from 'react'
 import type { SyncConfig } from '../lib/github'
+import type { TwoStepConfig } from '../lib/twoStep'
+import { formatTotpSecret, generateTotpSecret, getOtpAuthUrl } from '../lib/twoStep'
 
 interface Props {
   config: SyncConfig
   syncing: boolean
   lastSyncInfo: string
+  twoStepConfig: TwoStepConfig | null
   onSave: (cfg: SyncConfig) => void
+  onEnableTwoStep: (password: string, secret: string, code: string) => Promise<void>
+  onDisableTwoStep: () => void
+  onLockNow: () => void
   onSyncNow: () => void
   onGenerateTestNotes: (count: number) => void
   onClearTestNotes: () => void
@@ -18,7 +24,11 @@ export default function SettingsModal({
   config,
   syncing,
   lastSyncInfo,
+  twoStepConfig,
   onSave,
+  onEnableTwoStep,
+  onDisableTwoStep,
+  onLockNow,
   onSyncNow,
   onGenerateTestNotes,
   onClearTestNotes,
@@ -30,6 +40,26 @@ export default function SettingsModal({
   const [owner, setOwner] = useState(config.owner)
   const [repo, setRepo] = useState(config.repo)
   const [branch, setBranch] = useState(config.branch)
+  const [setupSecret, setSetupSecret] = useState(() => generateTotpSecret())
+  const [securityPassword, setSecurityPassword] = useState('')
+  const [securityCode, setSecurityCode] = useState('')
+  const [securityBusy, setSecurityBusy] = useState(false)
+  const [securityError, setSecurityError] = useState<string | null>(null)
+
+  async function enableTwoStep() {
+    setSecurityBusy(true)
+    setSecurityError(null)
+    try {
+      await onEnableTwoStep(securityPassword, setupSecret, securityCode)
+      setSecurityPassword('')
+      setSecurityCode('')
+      setSetupSecret(generateTotpSecret())
+    } catch (err) {
+      setSecurityError(err instanceof Error ? err.message : 'Could not enable two-step verification.')
+    } finally {
+      setSecurityBusy(false)
+    }
+  }
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -38,6 +68,73 @@ export default function SettingsModal({
           <h2>Settings</h2>
           <button className="btn subtle" onClick={onClose}>✕</button>
         </header>
+
+        <section>
+          <h3>Two-step verification</h3>
+          {twoStepConfig ? (
+            <>
+              <p className="hint">
+                Two-step verification is on. Opening this wiki now requires your unlock password and a
+                six-digit code from your authenticator app before notes or sync settings load.
+              </p>
+              <div className="row">
+                <button className="btn" onClick={onLockNow}>Lock now</button>
+                <button
+                  className="btn danger"
+                  onClick={() => {
+                    if (confirm('Disable two-step verification for this browser?')) onDisableTwoStep()
+                  }}
+                >
+                  Disable two-step
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="hint">
+                Add a local lock before this browser opens notes or GitHub sync settings. Save the
+                manual key in your authenticator app, then enter the current code to turn it on.
+              </p>
+              <div className="secret-box">
+                <span>Manual key</span>
+                <code>{formatTotpSecret(setupSecret)}</code>
+              </div>
+              <label>Authenticator setup URI
+                <input readOnly value={getOtpAuthUrl(setupSecret)} onFocus={(e) => e.currentTarget.select()} />
+              </label>
+              <label>Unlock password
+                <input
+                  type="password"
+                  value={securityPassword}
+                  autoComplete="new-password"
+                  placeholder="At least 12 characters"
+                  onChange={(e) => setSecurityPassword(e.target.value)}
+                />
+              </label>
+              <label>Authenticator code
+                <input
+                  inputMode="numeric"
+                  pattern="[0-9 ]*"
+                  value={securityCode}
+                  autoComplete="one-time-code"
+                  placeholder="123456"
+                  onChange={(e) => setSecurityCode(e.target.value)}
+                />
+              </label>
+              {securityError && <p className="security-error">{securityError}</p>}
+              <div className="row">
+                <button
+                  className="btn primary"
+                  disabled={securityBusy || !securityPassword || !securityCode}
+                  onClick={enableTwoStep}
+                >
+                  {securityBusy ? 'Verifying...' : 'Enable two-step'}
+                </button>
+                <button className="btn" onClick={() => setSetupSecret(generateTotpSecret())}>New key</button>
+              </div>
+            </>
+          )}
+        </section>
 
         <section>
           <h3>GitHub sync</h3>

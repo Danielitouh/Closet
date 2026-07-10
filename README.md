@@ -36,6 +36,10 @@ file what it finds directly into the wiki.
    Permissions: **Contents → Read and write**. Copy the `github_pat_…` value.
 3. Open the app → ⚙ Settings → paste the token → Save → Sync now.
    The token stays in your browser's localStorage; it is never committed.
+4. Open Settings → Two-step verification, add the manual key to an
+   authenticator app, choose an unlock password, and enter the current
+   six-digit code. After that, this browser must pass both steps before notes
+   or sync settings load.
 
 ### Local development
 

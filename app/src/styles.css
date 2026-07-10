@@ -406,6 +406,70 @@ kbd {
 .settings-modal .row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
 .hint { font-size: 12px; color: var(--text-dim); margin: 6px 0; line-height: 1.5; }
 
+/* --- Local two-step lock ---------------------------------------------------- */
+.security-screen {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(125, 211, 168, 0.10), transparent 28%),
+    var(--bg);
+}
+.security-card {
+  width: min(430px, 100%);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.security-header h1 { font-size: 22px; margin-bottom: 5px; }
+.security-header p { color: var(--text-dim); font-size: 13px; line-height: 1.5; }
+.security-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.security-card input {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 10px 11px;
+  font-size: 14px;
+}
+.security-card input:focus { outline: none; border-color: var(--accent); }
+.security-error {
+  border: 1px solid rgba(242, 184, 198, 0.32);
+  border-radius: 10px;
+  background: rgba(242, 184, 198, 0.08);
+  color: #f2b8c6;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.secret-box {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 8px 0;
+  padding: 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+}
+.secret-box span {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.secret-box code {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  color: var(--text);
+}
+
 /* --- Toast ----------------------------------------------------------------- */
 .toast {
   position: fixed;

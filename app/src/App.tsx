@@ -3,10 +3,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import GraphView, { DEFAULT_PHYSICS, GraphViewHandle, PhysicsSettings, tagColor } from './components/GraphView'
 import NotePanel from './components/NotePanel'
 import SearchModal from './components/SearchModal'
+import SecurityGate from './components/SecurityGate'
 import SettingsModal from './components/SettingsModal'
 import { buildGraph, localSubgraph } from './lib/graphData'
 import { syncAll, SyncConfig } from './lib/github'
 import { normalizeTitle } from './lib/parser'
+import {
+  enrollTwoStep,
+  loadTwoStepConfig,
+  saveTwoStepConfig,
+  unlockTwoStep,
+  type TwoStepConfig,
+} from './lib/twoStep'
 import {
   deleteNoteFromDB,
   getAllNotes,
@@ -28,6 +36,8 @@ function loadConfig(): SyncConfig {
 }
 
 export default function App() {
+  const [twoStepConfig, setTwoStepConfig] = useState<TwoStepConfig | null>(loadTwoStepConfig)
+  const [unlocked, setUnlocked] = useState(() => !loadTwoStepConfig())
   const [notes, setNotes] = useState<Map<string, StoredNote>>(new Map())
   const [loaded, setLoaded] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
@@ -70,6 +80,7 @@ export default function App() {
 
   // --- Initial load ---------------------------------------------------------
   useEffect(() => {
+    if (!unlocked) return
     ;(async () => {
       let stored = await getAllNotes()
       if (stored.length === 0) {
@@ -86,7 +97,7 @@ export default function App() {
       setNotes(new Map(stored.map((n) => [n.title, n])))
       setLoaded(true)
     })()
-  }, [])
+  }, [unlocked])
 
   // --- Note mutations --------------------------------------------------------
   const upsertNote = useCallback((title: string, content: string, extra?: Partial<StoredNote>) => {
@@ -236,9 +247,10 @@ export default function App() {
 
   // Sync once on load when a token exists.
   useEffect(() => {
+    if (!unlocked) return
     if (loaded && loadConfig().token) void doSync()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded])
+  }, [loaded, unlocked])
 
   // --- Keyboard ----------------------------------------------------------------
   useEffect(() => {
@@ -378,6 +390,46 @@ export default function App() {
     [graph],
   )
 
+  const unlock = useCallback(async (password: string, code: string) => {
+    const cfg = loadTwoStepConfig()
+    if (!cfg) {
+      setTwoStepConfig(null)
+      setUnlocked(true)
+      return
+    }
+    await unlockTwoStep(cfg, password, code)
+    setTwoStepConfig(cfg)
+    setUnlocked(true)
+  }, [])
+
+  const enableTwoStep = useCallback(async (password: string, secret: string, code: string) => {
+    const cfg = await enrollTwoStep(password, secret, code)
+    saveTwoStepConfig(cfg)
+    setTwoStepConfig(cfg)
+    setUnlocked(true)
+    showToast('Two-step verification enabled.')
+  }, [showToast])
+
+  const disableTwoStep = useCallback(() => {
+    saveTwoStepConfig(null)
+    setTwoStepConfig(null)
+    setUnlocked(true)
+    showToast('Two-step verification disabled.')
+  }, [showToast])
+
+  const lockNow = useCallback(() => {
+    if (!twoStepConfig) return
+    if (syncTimer.current) clearTimeout(syncTimer.current)
+    setLoaded(false)
+    setNotes(new Map())
+    setSelected(null)
+    setSearchOpen(false)
+    setSettingsOpen(false)
+    setUnlocked(false)
+  }, [twoStepConfig])
+
+  if (!unlocked) return <SecurityGate onUnlock={unlock} />
+
   if (!loaded) return <div className="loading">Loading your second brain…</div>
 
   return (
@@ -484,11 +536,15 @@ export default function App() {
           config={config}
           syncing={syncing}
           lastSyncInfo={lastSyncInfo}
+          twoStepConfig={twoStepConfig}
           onSave={(cfg) => {
             setConfig(cfg)
             localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg))
             showToast('Settings saved.')
           }}
+          onEnableTwoStep={enableTwoStep}
+          onDisableTwoStep={disableTwoStep}
+          onLockNow={lockNow}
           onSyncNow={() => void doSync()}
           onGenerateTestNotes={generateTestNotes}
           onClearTestNotes={clearTestNotes}
