@@ -5,4 +5,4 @@ section: research
 
 Hub for everything learned from the outside world — AI ingestions land here.
 
-Nothing yet. Tell Claude: *"Research something and add it to my wiki."*
+- [[Hip Hop]] — the culture and music, from a 1973 Bronx party to the best-selling genre in America
