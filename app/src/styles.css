@@ -264,6 +264,12 @@ kbd {
 .wiki-link:hover { background: rgba(125, 211, 168, 0.14); }
 .wiki-link.ghost { color: var(--text-dim); border-bottom-style: dashed; }
 
+.editor-wrap {
+  flex: 1;
+  position: relative;
+  display: flex;
+  min-height: 0;
+}
 .note-editor {
   flex: 1;
   background: rgba(0, 0, 0, 0.25);
@@ -276,6 +282,42 @@ kbd {
   font-size: 13px;
   line-height: 1.6;
 }
+
+/* --- Slash-command / link picker menu -------------------------------------- */
+.slash-menu {
+  position: absolute;
+  z-index: 10;
+  width: 230px;
+  max-height: 260px;
+  overflow-y: auto;
+  border-radius: 14px;
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), var(--glass-inner);
+  animation: glass-pop 0.25s var(--spring);
+}
+.slash-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  padding: 8px 12px 2px;
+}
+.slash-menu ul { list-style: none; padding: 5px; }
+.slash-menu li {
+  padding: 7px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.slash-menu li.selected { background: rgba(255, 255, 255, 0.10); }
+.slash-menu li.create .slash-label { color: var(--accent); }
+.slash-label { font-size: 13px; }
+.slash-hint { font-size: 11px; color: var(--text-dim); }
 
 .backlinks {
   border-top: 1px solid var(--glass-border);
