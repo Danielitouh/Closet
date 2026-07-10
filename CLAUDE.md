@@ -75,9 +75,17 @@ Working with zero configuration (verified):
 
 Locked until the user provides credentials (do not attempt workarounds):
 
-- **Twitter/X** — `twitter` CLI is pre-installed; needs cookies via
-  `agent-reach configure twitter-cookies "..."` (or `TWITTER_AUTH_TOKEN` +
-  `TWITTER_CT0` env vars). No zero-config path on a headless server.
+- **Twitter/X** — `twitter` CLI is pre-installed and the user has set
+  `TWITTER_AUTH_TOKEN` + `TWITTER_CT0` in the environment, **but the CLI
+  cannot work in Claude Code web containers**: the egress proxy resets
+  browser-impersonated TLS handshakes (curl error 35), which curl_cffi
+  impersonation — and therefore twitter-cli — depends on. Verified 2026-07;
+  plain TLS to x.com passes, impersonated TLS is reset regardless of CA
+  bundle. Do not retry or debug this in web sessions. The CLI works from a
+  local machine with the same env vars. **Twitter research fallback that
+  works here**: read public tweets/threads with Jina
+  (`curl -s "https://r.jina.ai/https://x.com/user/status/ID"`), and discover
+  tweet content via Exa (threadreaderapp.com unrolls, thread roundups).
 - **Reddit, Xiaohongshu, Xueqiu, LinkedIn, Facebook, Instagram** — need login
   cookies / MCP setup; see `.claude/skills/agent-reach/references/`.
 - **Xiaoyuzhou transcription** — needs a free Groq key:
