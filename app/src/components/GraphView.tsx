@@ -39,6 +39,56 @@ function tagColor(tag: string | null): string {
   return PALETTE[h % PALETTE.length]
 }
 
+// --- Neuron animation helpers -----------------------------------------------
+
+/** Stable per-node phase so nodes breathe out of sync, like a living field. */
+function phaseOf(id: string): number {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 33 + id.charCodeAt(i)) >>> 0
+  return ((h % 1000) / 1000) * Math.PI * 2
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace('#', ''), 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+// Soft radial glow sprites, one per color — drawImage per frame is cheap,
+// per-frame shadowBlur is not.
+const glowSprites = new Map<string, HTMLCanvasElement>()
+const GLOW_SIZE = 64
+
+function glowSprite(color: string): HTMLCanvasElement {
+  let sprite = glowSprites.get(color)
+  if (sprite) return sprite
+  sprite = document.createElement('canvas')
+  sprite.width = sprite.height = GLOW_SIZE
+  const g = sprite.getContext('2d')!
+  const [r, gr, b] = color.startsWith('#') ? hexToRgb(color) : [207, 216, 220]
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32)
+  grad.addColorStop(0, `rgba(${r},${gr},${b},0.85)`)
+  grad.addColorStop(0.4, `rgba(${r},${gr},${b},0.28)`)
+  grad.addColorStop(1, `rgba(${r},${gr},${b},0)`)
+  g.fillStyle = grad
+  g.fillRect(0, 0, GLOW_SIZE, GLOW_SIZE)
+  glowSprites.set(color, sprite)
+  return sprite
+}
+
+interface Firing {
+  start: number
+  intensity: number // 1 = full action potential, <1 = arrival echo
+}
+
+interface Pulse {
+  from: string
+  to: string
+  start: number
+  dur: number
+}
+
+const FIRE_MS = 650
+
 export interface GraphViewHandle {
   focusNode: (id: string) => void
   zoomToFit: () => void
@@ -65,6 +115,13 @@ const GraphView = forwardRef<GraphViewHandle, Props>(function GraphView(
     id: null,
     neighbors: new Set(),
   })
+  // Neuron animation state
+  const firingRef = useRef<Map<string, Firing>>(new Map())
+  const pulsesRef = useRef<Pulse[]>([])
+  const nodesByIdRef = useRef<Map<string, GraphNode>>(new Map())
+  const reducedMotionRef = useRef(
+    typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches,
+  )
   const selectedRef = useRef<string | null>(null)
   selectedRef.current = selectedId
   const graphRef = useRef(graph)
@@ -126,14 +183,48 @@ const GraphView = forwardRef<GraphViewHandle, Props>(function GraphView(
             : graphRef.current.neighbors.get(active)?.has(node.id) ?? false)
         const dimmed = active !== null && !isActive && !isNeighbor
 
-        const r = Math.max(2, 2 + Math.sqrt(node.degree) * 1.4) * (isActive ? 1.35 : 1)
+        const now = performance.now()
+        const calm = reducedMotionRef.current
+        const crowded = nodesByIdRef.current.size > 400
+
+        // Idle breathing: slow, per-node phase (silent when reduced motion).
+        const breathe = calm ? 0 : Math.sin(now / 1600 + phaseOf(node.id))
+
+        // Firing flash: quick decay after an action potential or pulse arrival.
+        let fireT = 0
+        const fire = firingRef.current.get(node.id)
+        if (fire) {
+          const dt = (now - fire.start) / FIRE_MS
+          if (dt >= 1) firingRef.current.delete(node.id)
+          else fireT = Math.pow(1 - dt, 1.6) * fire.intensity
+        }
+
+        const rBase = Math.max(2, 2 + Math.sqrt(node.degree) * 1.4) * (isActive ? 1.35 : 1)
+        const r = rBase * (1 + 0.06 * breathe + 0.3 * fireT)
         const baseColor = node.ghost ? GHOST_COLOR : tagColor(node.tag)
+
+        // Soft neuron glow beneath the body. On very large graphs only firing
+        // nodes glow, so the 1,000-note case stays cheap.
+        if (!dimmed && !node.ghost && (fireT > 0 || !crowded)) {
+          const glowAlpha = (calm ? 0.10 : 0.13 + 0.07 * (breathe + 1) * 0.5) + 0.6 * fireT
+          const gr = r * (2.6 + 2.2 * fireT)
+          ctx.globalAlpha = Math.min(1, glowAlpha)
+          ctx.drawImage(glowSprite(baseColor), node.x! - gr, node.y! - gr, gr * 2, gr * 2)
+        }
 
         ctx.globalAlpha = dimmed ? 0.15 : node.ghost ? 0.55 : 1
         ctx.beginPath()
         ctx.arc(node.x!, node.y!, r, 0, 2 * Math.PI)
         ctx.fillStyle = baseColor
         ctx.fill()
+        if (fireT > 0.02 && !dimmed) {
+          // bright core while firing
+          ctx.globalAlpha = Math.min(1, fireT)
+          ctx.beginPath()
+          ctx.arc(node.x!, node.y!, r * 0.45, 0, 2 * Math.PI)
+          ctx.fillStyle = '#f2fbff'
+          ctx.fill()
+        }
         if (isActive) {
           ctx.strokeStyle = '#ffffff'
           ctx.lineWidth = 1.5 / scale
@@ -173,12 +264,77 @@ const GraphView = forwardRef<GraphViewHandle, Props>(function GraphView(
       })
       .onBackgroundClick(() => onBackgroundClickRef.current())
 
+    // Traveling synaptic pulses, drawn above links/nodes each frame.
+    fg.onRenderFramePost((ctx: CanvasRenderingContext2D) => {
+      const pulses = pulsesRef.current
+      if (pulses.length === 0) return
+      const now = performance.now()
+      const keep: Pulse[] = []
+      for (const p of pulses) {
+        const t = (now - p.start) / p.dur
+        if (t < 0) {
+          keep.push(p)
+          continue
+        }
+        const a = nodesByIdRef.current.get(p.from)
+        const b = nodesByIdRef.current.get(p.to)
+        if (!a || !b || a.x === undefined || b.x === undefined) continue
+        if (t >= 1) {
+          // Arrival: the receiving neuron echoes with a dimmer flash.
+          if (!firingRef.current.has(p.to)) {
+            firingRef.current.set(p.to, { start: now, intensity: 0.45 })
+          }
+          continue
+        }
+        const e = t * t * (3 - 2 * t) // smoothstep
+        const x = a.x! + (b.x! - a.x!) * e
+        const y = a.y! + (b.y! - a.y!) * e
+        const fade = Math.sin(Math.PI * t)
+        const color = a.ghost ? DEFAULT_COLOR : tagColor(a.tag)
+        ctx.globalAlpha = 0.8 * fade
+        ctx.drawImage(glowSprite(color), x - 7, y - 7, 14, 14)
+        ctx.globalAlpha = Math.min(1, 1.1 * fade)
+        ctx.beginPath()
+        ctx.arc(x, y, 1.5, 0, 2 * Math.PI)
+        ctx.fillStyle = '#eef8ff'
+        ctx.fill()
+        ctx.globalAlpha = 1
+        keep.push(p)
+      }
+      pulsesRef.current = keep
+    })
+
+    // Firing scheduler: a random neuron fires every couple of seconds and
+    // sends pulses to a few neighbors. Quieter on very large graphs; silent
+    // under prefers-reduced-motion.
+    const fireTimer = window.setInterval(() => {
+      if (reducedMotionRef.current || document.hidden) return
+      const nodes = (fg.graphData().nodes as GraphNode[]).filter((n) => !n.ghost)
+      if (nodes.length === 0) return
+      if (nodes.length > 400 && Math.random() < 0.5) return
+      const node = nodes[Math.floor(Math.random() * nodes.length)]
+      const now = performance.now()
+      firingRef.current.set(node.id, { start: now, intensity: 1 })
+      const nbs = [...(graphRef.current.neighbors.get(node.id) ?? [])]
+      const count = Math.min(3, nbs.length)
+      for (let i = 0; i < count; i++) {
+        const [to] = nbs.splice(Math.floor(Math.random() * nbs.length), 1)
+        pulsesRef.current.push({
+          from: node.id,
+          to,
+          start: now + 130,
+          dur: 420 + Math.random() * 280,
+        })
+      }
+    }, 1700)
+
     const resize = () => fg.width(el.clientWidth).height(el.clientHeight)
     resize()
     const ro = new ResizeObserver(resize)
     ro.observe(el)
 
     return () => {
+      window.clearInterval(fireTimer)
       ro.disconnect()
       fg._destructor?.()
     }
@@ -186,6 +342,7 @@ const GraphView = forwardRef<GraphViewHandle, Props>(function GraphView(
 
   // Data updates.
   useEffect(() => {
+    nodesByIdRef.current = new Map(data.nodes.map((n) => [n.id, n]))
     fgRef.current?.graphData(data)
   }, [data])
 
