@@ -22,9 +22,14 @@ file what it finds directly into the wiki.
   ghost notes (link to a note that doesn't exist → faded node → click to create).
 - **Backlinks** panel, **full-text search** (Ctrl/Cmd+K), tag filters,
   physics sliders, per-note **local graph** focus mode.
-- **GitHub sync**: paste a fine-grained token once per browser; notes push/pull
-  to `/notes` automatically. Works fully offline without a token too
-  (browser storage + zip export/import).
+- **End-to-end encryption**: notes are AES-GCM encrypted on-device before
+  they reach GitHub — the repo stores only ciphertext under `/vault` with
+  hashed filenames (even titles are hidden), and the public site ships zero
+  note content. The vault key is wrapped by your password; unlocking requires
+  the password plus a six-digit authenticator code, on every device.
+- **GitHub sync**: paste a fine-grained token once per browser; encrypted
+  notes push/pull automatically, and the vault lock follows your devices.
+  Works offline too (browser storage + zip export/import).
 
 ### One-time setup
 
@@ -36,10 +41,24 @@ file what it finds directly into the wiki.
    Permissions: **Contents → Read and write**. Copy the `github_pat_…` value.
 3. Open the app → ⚙ Settings → paste the token → Save → Sync now.
    The token stays in your browser's localStorage; it is never committed.
-4. Open Settings → Two-step verification, add the manual key to an
-   authenticator app, choose an unlock password, and enter the current
-   six-digit code. After that, this browser must pass both steps before notes
-   or sync settings load.
+4. **Enable the encrypted vault** (Settings → Encrypted vault & two-step):
+   add the manual key to an authenticator app, choose a vault password
+   (12+ characters — this password IS the encryption key; it cannot be
+   recovered if forgotten), enter the current six-digit code. Existing
+   plaintext notes are automatically encrypted into `/vault` and removed
+   from the repo on your next sync. Other devices with your token adopt the
+   lock automatically.
+
+### Security model, honestly
+
+- What's public: the app code, the encrypted blobs in `/vault`, and the
+  wrapped-key settings file. What's never public: note titles or content.
+- Your password never leaves your device; losing it means losing the notes
+  (export a zip backup from Settings if that worries you).
+- Anything committed as plaintext in the repo's **git history** before
+  encryption was enabled remains visible in that history.
+- AI research sessions can only touch notes when you hand them the password
+  for that session (`scripts/vault-cli.mjs`).
 
 ### Local development
 

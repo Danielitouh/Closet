@@ -6,12 +6,29 @@ plus the **agent-reach** skill (`.claude/skills/agent-reach/`) — an
 internet-access router for Claude Code covering 15 platforms — and a
 SessionStart hook that provisions its tooling in Claude Code on the web.
 
-## The wiki (`/notes` + `/app`)
+## The wiki (`/vault` + `/app`) — END-TO-END ENCRYPTED
 
-Notes are plain markdown files in `/notes`, connected with `[[wikilinks]]`
-(`[[Target|alias]]` supported). The app renders them as a live force-directed
-graph at `https://danielitouh.github.io/Closet/`; every push to `main`
-redeploys it with the current notes baked in as seeds.
+Notes are **encrypted at rest**: each note is an AES-GCM blob in `/vault`
+with a hashed filename (titles hidden), keyed by a vault key that only the
+user's password unwraps (`settings/vault.json` holds the wrapped key — safe
+to be public). The app at `https://danielitouh.github.io/Closet/` ships **no
+note content**; notes appear only after unlocking on a device. Legacy
+plaintext `/notes` is migrated+deleted automatically by the app on the
+user's first unlocked sync — never recreate it.
+
+**Sessions cannot read or write notes without the user's vault password.**
+When a task needs the wiki, ask the user to provide the password for this
+session, export it as `VAULT_PASSWORD` (never write it to a file, never echo
+it), and use the CLI:
+
+```bash
+VAULT_PASSWORD=... node scripts/vault-cli.mjs list            # all note titles
+VAULT_PASSWORD=... node scripts/vault-cli.mjs read --title "X" # one note's markdown
+VAULT_PASSWORD=... node scripts/vault-cli.mjs add  --title "X" --file /tmp/x.md
+```
+
+`add` writes the encrypted blob into `/vault`; commit and push as usual.
+Never commit plaintext notes anywhere in the repo.
 
 ### Sections of the brain
 
@@ -25,20 +42,24 @@ asked for.
 
 ### Ingestion workflow ("research X and add it to my wiki")
 
-When asked to research a topic and save it, this is the job — use agent-reach
-to gather, then file notes:
+When asked to research a topic and save it: gather with agent-reach, then
+file notes **through the vault CLI** (which needs the user's password — ask
+for it once per session, use it only as the `VAULT_PASSWORD` env var):
 
 1. Gather with agent-reach (Exa search, Jina reading, YouTube subs, etc.).
-2. Write **one note per idea** (not per source) into `/notes/<Title>.md`:
+2. Discover existing titles with `vault-cli list` (and `read` for hubs).
+3. Write **one note per idea** (not per source) to a temp file in `/tmp`,
+   then `vault-cli add --title "<Title>" --file /tmp/<f>.md`:
    - Start with frontmatter: `---\nsection: research\ntags: [topic]\n---`
      (use another section if the user says so).
    - Include a `Source:` line with the URL for anything drawn from the web.
-   - Add at least two `[[wikilinks]]` to related notes (check existing titles
-     first with `ls notes/`) so nothing enters the graph as an orphan.
-   - Link the topic's main note from the section hub (e.g. `Research.md`).
-3. Keep titles short and noun-like — they are node labels and link text.
-4. Commit and push to deploy. Never delete or rewrite existing notes unless
-   asked; append and link instead.
+   - Add at least two `[[wikilinks]]` to related notes so nothing enters the
+     graph as an orphan.
+   - Update the section hub (read it, append the link, `add` it back).
+4. Keep titles short and noun-like — they are node labels and link text.
+5. Commit the new `/vault` blobs and push. Never delete or rewrite existing
+   notes unless asked; append and link instead. Delete the `/tmp` plaintext
+   when done.
 
 ### Working on the app
 
