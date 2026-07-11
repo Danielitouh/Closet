@@ -3,6 +3,7 @@
 /config/
 
 # Wiki app
+/node_modules/
 app/node_modules/
 app/dist/
 app/smoke.tmp.mjs
