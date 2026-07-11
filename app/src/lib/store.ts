@@ -65,20 +65,6 @@ export function setMeta(key: string, value: unknown): Promise<unknown> {
   return tx('meta', 'readwrite', (s) => s.put(value, key))
 }
 
-// --- Seed notes -------------------------------------------------------------
-// The repo's /notes folder is bundled into the app at build time, so a fresh
-// browser starts with the wiki as of the last deploy; GitHub sync then brings
-// it fully up to date.
-
-const seedModules = import.meta.glob('../../../notes/*.md', {
-  query: '?raw',
-  import: 'default',
-  eager: true,
-}) as Record<string, string>
-
-export function getSeedNotes(): { title: string; content: string }[] {
-  return Object.entries(seedModules).map(([path, content]) => ({
-    title: decodeURIComponent(path.split('/').pop()!.replace(/\.md$/i, '')),
-    content,
-  }))
-}
+// Seeds intentionally removed: bundling notes into the public site would
+// defeat end-to-end encryption. A fresh browser starts empty and receives
+// notes only through an unlocked, token-authenticated vault sync.

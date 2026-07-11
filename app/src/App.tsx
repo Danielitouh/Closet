@@ -6,20 +6,32 @@ import SearchModal from './components/SearchModal'
 import SecurityGate from './components/SecurityGate'
 import SettingsModal from './components/SettingsModal'
 import { buildGraph, localSubgraph } from './lib/graphData'
-import { syncAll, SyncConfig } from './lib/github'
-import { normalizeTitle } from './lib/parser'
 import {
-  enrollTwoStep,
-  loadTwoStepConfig,
-  saveTwoStepConfig,
-  unlockTwoStep,
-  type TwoStepConfig,
-} from './lib/twoStep'
+  fetchVaultRemote,
+  migrateLegacyNotes,
+  pushVaultRemote,
+  syncAll,
+  SyncConfig,
+  VaultCodec,
+} from './lib/github'
+import { normalizeTitle } from './lib/parser'
+import { loadTwoStepConfig, saveTwoStepConfig, unlockTwoStep, verifyTotp } from './lib/twoStep'
+import {
+  createVault,
+  decryptNote,
+  encryptNote,
+  isTombstone,
+  loadVaultConfig,
+  reconcileVault,
+  saveVaultConfig,
+  unlockVault,
+  vaultFilename,
+  type VaultConfig,
+} from './lib/vault'
 import {
   deleteNoteFromDB,
   getAllNotes,
   getMeta,
-  getSeedNotes,
   putNote,
   setMeta,
   StoredNote,
@@ -36,8 +48,10 @@ function loadConfig(): SyncConfig {
 }
 
 export default function App() {
-  const [twoStepConfig, setTwoStepConfig] = useState<TwoStepConfig | null>(loadTwoStepConfig)
-  const [unlocked, setUnlocked] = useState(() => !loadTwoStepConfig())
+  const [vaultConfig, setVaultConfig] = useState<VaultConfig | null>(loadVaultConfig)
+  // Locked when either the new vault or a legacy two-step enrollment exists.
+  const [unlocked, setUnlocked] = useState(() => !loadVaultConfig() && !loadTwoStepConfig())
+  const vaultKeyRef = useRef<CryptoKey | null>(null)
   const [notes, setNotes] = useState<Map<string, StoredNote>>(new Map())
   const [loaded, setLoaded] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
@@ -79,25 +93,39 @@ export default function App() {
   }, [])
 
   // --- Initial load ---------------------------------------------------------
+  // No bundled seeds: the deployed site starts empty and notes only appear
+  // after this browser unlocks the vault and syncs. Nothing readable ships.
   useEffect(() => {
     if (!unlocked) return
     ;(async () => {
-      let stored = await getAllNotes()
-      if (stored.length === 0) {
-        const seeds = getSeedNotes()
-        stored = seeds.map((s) => ({
-          title: s.title,
-          content: s.content,
-          dirty: false,
-          updatedAt: Date.now(),
-        }))
-        await Promise.all(stored.map(putNote))
-      }
+      const stored = await getAllNotes()
       pendingDeletes.current = (await getMeta<string[]>('pendingDeletes')) ?? []
       setNotes(new Map(stored.map((n) => [n.title, n])))
       setLoaded(true)
     })()
   }, [unlocked])
+
+  // Vault adoption: a device with a sync token but no local vault checks the
+  // repo for one (enrolled on another device) and locks itself to it.
+  useEffect(() => {
+    if (!loaded || vaultConfig || loadTwoStepConfig()) return
+    const cfg = loadConfig()
+    if (!cfg.token) return
+    void (async () => {
+      try {
+        const remote = await fetchVaultRemote(cfg)
+        if (remote && !isTombstone(remote.remote)) {
+          saveVaultConfig(remote.remote)
+          setVaultConfig(remote.remote)
+          setUnlocked(false)
+          showToast('This wiki is protected — unlock with your vault password.')
+        }
+      } catch {
+        // Offline or no access: stay usable locally.
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, vaultConfig])
 
   // --- Note mutations --------------------------------------------------------
   const upsertNote = useCallback((title: string, content: string, extra?: Partial<StoredNote>) => {
@@ -193,9 +221,64 @@ export default function App() {
       showToast('Add a GitHub token in Settings to sync.')
       return
     }
+    const key = vaultKeyRef.current
+    const localVault = loadVaultConfig()
+    if (!key || !localVault) {
+      showToast('Set a vault password in Settings — sync only runs end-to-end encrypted.')
+      return
+    }
+    const codec: VaultCodec = {
+      filenameFor: (title) => vaultFilename(title),
+      encrypt: (title, content) => encryptNote(key, title, content),
+      decrypt: (body) => decryptNote(key, body),
+    }
     setSyncing(true)
     try {
-      const result = await syncAll(cfg, [...notesRef.current.values()], pendingDeletes.current, {
+      // 1. Reconcile vault settings across devices.
+      const remoteVault = await fetchVaultRemote(cfg)
+      const action = reconcileVault(localVault, remoteVault?.remote ?? null)
+      if (action === 'push-local') {
+        await pushVaultRemote(cfg, localVault, remoteVault?.sha)
+      } else if (action === 'adopt-remote' && remoteVault && !isTombstone(remoteVault.remote)) {
+        if (remoteVault.remote.wrappedKey !== localVault.wrappedKey) {
+          // A different enrollment exists elsewhere and is newer: adopt it and
+          // require a fresh unlock — our in-memory key no longer matches.
+          saveVaultConfig(remoteVault.remote)
+          setVaultConfig(remoteVault.remote)
+          vaultKeyRef.current = null
+          setSyncing(false)
+          showToast('Security settings changed on another device — unlock again.')
+          lockNow()
+          return
+        }
+        saveVaultConfig(remoteVault.remote)
+        setVaultConfig(remoteVault.remote)
+      } else if (action === 'delete-local') {
+        saveVaultConfig(null)
+        setVaultConfig(null)
+        vaultKeyRef.current = null
+        setSyncing(false)
+        showToast('Vault was disabled from another device. Sync is paused.')
+        return
+      }
+
+      // 2. One-time migration: encrypt any legacy plaintext /notes into the vault.
+      const migration = await migrateLegacyNotes(cfg, codec, async (title, content, sha) => {
+        setNotes((prev) => {
+          const next = new Map(prev)
+          const note: StoredNote = { title, content, dirty: false, sha, updatedAt: Date.now() }
+          next.set(title, note)
+          void putNote(note)
+          return next
+        })
+      })
+      if (migration.migrated.length) {
+        showToast(`Encrypted ${migration.migrated.length} notes into the vault. Plaintext removed from GitHub.`)
+      }
+      if (migration.errors.length) console.error('migration errors', migration.errors)
+
+      // 3. Sync encrypted notes.
+      const result = await syncAll(cfg, codec, [...notesRef.current.values()], pendingDeletes.current, {
         async applyRemote(title, content, sha) {
           setNotes((prev) => {
             const next = new Map(prev)
@@ -391,42 +474,84 @@ export default function App() {
   )
 
   const unlock = useCallback(async (password: string, code: string) => {
-    const cfg = loadTwoStepConfig()
-    if (!cfg) {
-      setTwoStepConfig(null)
+    const cfg = loadVaultConfig()
+    if (cfg) {
+      const { key, totpSecret } = await unlockVault(cfg, password)
+      if (!(await verifyTotp(totpSecret, code))) throw new Error('Invalid authenticator code.')
+      vaultKeyRef.current = key
+      setVaultConfig(cfg)
       setUnlocked(true)
       return
     }
-    await unlockTwoStep(cfg, password, code)
-    setTwoStepConfig(cfg)
+    // Legacy two-step enrollment (pre-vault): unlocking reveals the TOTP
+    // secret, so upgrade in place to an encrypted vault with the same
+    // password and authenticator — no re-enrollment needed.
+    const legacy = loadTwoStepConfig()
+    if (legacy) {
+      const totpSecret = await unlockTwoStep(legacy, password, code)
+      const { config, key } = await createVault(password, totpSecret)
+      saveVaultConfig(config)
+      saveTwoStepConfig(null)
+      vaultKeyRef.current = key
+      setVaultConfig(config)
+      setUnlocked(true)
+      showToast('Security upgraded: your notes are now end-to-end encrypted.')
+      return
+    }
     setUnlocked(true)
-  }, [])
+  }, [showToast])
 
   const enableTwoStep = useCallback(async (password: string, secret: string, code: string) => {
-    const cfg = await enrollTwoStep(password, secret, code)
-    saveTwoStepConfig(cfg)
-    setTwoStepConfig(cfg)
+    if (!(await verifyTotp(secret, code))) throw new Error('That code doesn’t match. Check your authenticator and try again.')
+    const { config, key } = await createVault(password, secret)
+    saveVaultConfig(config)
+    vaultKeyRef.current = key
+    setVaultConfig(config)
     setUnlocked(true)
-    showToast('Two-step verification enabled.')
+    showToast('Vault enabled: notes are end-to-end encrypted and locked behind two-step.')
+    // Best-effort: publish the (encrypted) settings so other devices adopt it.
+    const cfg = loadConfig()
+    if (cfg.token) {
+      try {
+        const remote = await fetchVaultRemote(cfg)
+        await pushVaultRemote(cfg, config, remote?.sha)
+      } catch (e) {
+        showToast(`Vault enabled locally, but publishing to GitHub failed: ${String(e)}`)
+      }
+    }
   }, [showToast])
 
   const disableTwoStep = useCallback(() => {
-    saveTwoStepConfig(null)
-    setTwoStepConfig(null)
-    setUnlocked(true)
-    showToast('Two-step verification disabled.')
+    void (async () => {
+      const cfg = loadConfig()
+      if (cfg.token && loadVaultConfig()) {
+        try {
+          const remote = await fetchVaultRemote(cfg)
+          await pushVaultRemote(cfg, { v: 1, disabled: true, updatedAt: Date.now() }, remote?.sha)
+        } catch {
+          showToast('Could not update GitHub; other devices may stay locked.')
+        }
+      }
+      saveVaultConfig(null)
+      saveTwoStepConfig(null)
+      vaultKeyRef.current = null
+      setVaultConfig(null)
+      setUnlocked(true)
+      showToast('Vault disabled. Notes stay on this device; sync is paused until you re-enable it.')
+    })()
   }, [showToast])
 
   const lockNow = useCallback(() => {
-    if (!twoStepConfig) return
+    if (!vaultConfig) return
     if (syncTimer.current) clearTimeout(syncTimer.current)
+    vaultKeyRef.current = null
     setLoaded(false)
     setNotes(new Map())
     setSelected(null)
     setSearchOpen(false)
     setSettingsOpen(false)
     setUnlocked(false)
-  }, [twoStepConfig])
+  }, [vaultConfig])
 
   if (!unlocked) return <SecurityGate onUnlock={unlock} />
 
@@ -536,7 +661,7 @@ export default function App() {
           config={config}
           syncing={syncing}
           lastSyncInfo={lastSyncInfo}
-          twoStepConfig={twoStepConfig}
+          twoStepConfig={vaultConfig}
           onSave={(cfg) => {
             setConfig(cfg)
             localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg))

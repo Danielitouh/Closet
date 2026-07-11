@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import type { SyncConfig } from '../lib/github'
-import type { TwoStepConfig } from '../lib/twoStep'
 import { formatTotpSecret, generateTotpSecret, getOtpAuthUrl } from '../lib/twoStep'
+import type { VaultConfig } from '../lib/vault'
 
 interface Props {
   config: SyncConfig
   syncing: boolean
   lastSyncInfo: string
-  twoStepConfig: TwoStepConfig | null
+  twoStepConfig: VaultConfig | null
   onSave: (cfg: SyncConfig) => void
   onEnableTwoStep: (password: string, secret: string, code: string) => Promise<void>
   onDisableTwoStep: () => void
@@ -70,30 +70,39 @@ export default function SettingsModal({
         </header>
 
         <section>
-          <h3>Two-step verification</h3>
+          <h3>Encrypted vault &amp; two-step</h3>
           {twoStepConfig ? (
             <>
               <p className="hint">
-                Two-step verification is on. Opening this wiki now requires your unlock password and a
-                six-digit code from your authenticator app before notes or sync settings load.
+                The vault is on: notes are <b>end-to-end encrypted</b> before they reach GitHub, and
+                opening this wiki requires your vault password plus a six-digit authenticator code.
+                Devices with your GitHub token adopt this lock automatically on their next sync.
               </p>
               <div className="row">
                 <button className="btn" onClick={onLockNow}>Lock now</button>
                 <button
                   className="btn danger"
                   onClick={() => {
-                    if (confirm('Disable two-step verification for this browser?')) onDisableTwoStep()
+                    if (
+                      confirm(
+                        'Disable the vault? Notes stay on this device, sync pauses, and other devices will also unlock. Make sure this device has the latest notes first.',
+                      )
+                    )
+                      onDisableTwoStep()
                   }}
                 >
-                  Disable two-step
+                  Disable vault
                 </button>
               </div>
             </>
           ) : (
             <>
               <p className="hint">
-                Add a local lock before this browser opens notes or GitHub sync settings. Save the
-                manual key in your authenticator app, then enter the current code to turn it on.
+                Create the vault: your notes get <b>end-to-end encrypted</b> with a key only your
+                password unlocks — nothing readable is ever stored on GitHub or the public site, and
+                sync only runs encrypted. Save the manual key in your authenticator app, choose a
+                vault password, then enter the current code. Enroll once; other devices with your
+                GitHub token pick up the lock automatically.
               </p>
               <div className="secret-box">
                 <span>Manual key</span>
@@ -128,7 +137,7 @@ export default function SettingsModal({
                   disabled={securityBusy || !securityPassword || !securityCode}
                   onClick={enableTwoStep}
                 >
-                  {securityBusy ? 'Verifying...' : 'Enable two-step'}
+                  {securityBusy ? 'Verifying...' : 'Enable encrypted vault'}
                 </button>
                 <button className="btn" onClick={() => setSetupSecret(generateTotpSecret())}>New key</button>
               </div>

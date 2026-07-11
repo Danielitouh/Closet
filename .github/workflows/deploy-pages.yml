@@ -3,6 +3,11 @@ name: Deploy wiki to GitHub Pages
 on:
   push:
     branches: [main]
+    # Notes are end-to-end encrypted and never bundled into the site, so
+    # vault syncs don't need redeploys.
+    paths-ignore:
+      - 'vault/**'
+      - 'settings/**'
   workflow_dispatch:
 
 permissions:

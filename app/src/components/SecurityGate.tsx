@@ -30,7 +30,7 @@ export default function SecurityGate({ onUnlock }: Props) {
         <header className="security-header">
           <div>
             <h1>Closet is locked</h1>
-            <p>Enter your unlock password and authenticator code.</p>
+            <p>Enter your vault password and authenticator code to decrypt your notes.</p>
           </div>
         </header>
         <label>Unlock password
