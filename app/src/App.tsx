@@ -105,10 +105,14 @@ export default function App() {
     })()
   }, [unlocked])
 
-  // Vault adoption: a device with a sync token but no local vault checks the
-  // repo for one (enrolled on another device) and locks itself to it.
+  // Vault adoption (runs on mount, before unlock): a device with a sync token
+  // but no local vault checks the repo for one enrolled on another device and
+  // locks itself to it. A remote vault SUPERSEDES any local legacy two-step
+  // enrollment — so a device that only had the old two-step adopts the new
+  // encrypted vault instead of creating a conflicting one on unlock (which
+  // would overwrite the other device's vault and orphan its notes).
   useEffect(() => {
-    if (!loaded || vaultConfig || loadTwoStepConfig()) return
+    if (loadVaultConfig()) return // already locked to a vault locally
     const cfg = loadConfig()
     if (!cfg.token) return
     void (async () => {
@@ -116,6 +120,7 @@ export default function App() {
         const remote = await fetchVaultRemote(cfg)
         if (remote && !isTombstone(remote.remote)) {
           saveVaultConfig(remote.remote)
+          saveTwoStepConfig(null) // remote vault wins over any local legacy lock
           setVaultConfig(remote.remote)
           setUnlocked(false)
           showToast('This wiki is protected — unlock with your vault password.')
@@ -125,7 +130,7 @@ export default function App() {
       }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, vaultConfig])
+  }, [])
 
   // --- Note mutations --------------------------------------------------------
   const upsertNote = useCallback((title: string, content: string, extra?: Partial<StoredNote>) => {
@@ -488,6 +493,28 @@ export default function App() {
     // password and authenticator — no re-enrollment needed.
     const legacy = loadTwoStepConfig()
     if (legacy) {
+      // Guard: if another device already published an encrypted vault, adopt
+      // it instead of creating a conflicting one (which would overwrite the
+      // other device's vault and orphan its notes). Closes the race where the
+      // mount-time adoption fetch hasn't landed yet.
+      const syncCfg = loadConfig()
+      if (syncCfg.token) {
+        try {
+          const remote = await fetchVaultRemote(syncCfg)
+          if (remote && !isTombstone(remote.remote)) {
+            saveVaultConfig(remote.remote)
+            saveTwoStepConfig(null)
+            setVaultConfig(remote.remote)
+            throw new Error(
+              'This wiki is already protected from another device — unlock with THAT device’s vault password.',
+            )
+          }
+        } catch (e) {
+          // A thrown adoption message should surface to the gate; network
+          // errors fall through to the in-place upgrade below.
+          if (e instanceof Error && e.message.startsWith('This wiki is already protected')) throw e
+        }
+      }
       const totpSecret = await unlockTwoStep(legacy, password, code)
       const { config, key } = await createVault(password, totpSecret)
       saveVaultConfig(config)
