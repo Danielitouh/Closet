@@ -528,6 +528,29 @@ export default function App() {
     setUnlocked(true)
   }, [showToast])
 
+  // Escape hatch for a forgotten vault password. Removes THIS browser's lock so
+  // a device whose encryption never finished/synced isn't stranded. It cannot
+  // decrypt notes already encrypted on GitHub — those are unrecoverable without
+  // the password by design — so it reports whether such a remote vault exists.
+  const resetVault = useCallback(async (): Promise<{ hadRemoteVault: boolean }> => {
+    const cfg = loadConfig()
+    let hadRemoteVault = false
+    if (cfg.token) {
+      try {
+        const remote = await fetchVaultRemote(cfg)
+        hadRemoteVault = !!remote && !isTombstone(remote.remote)
+      } catch {
+        // Offline / no access: proceed with the local reset anyway.
+      }
+    }
+    saveVaultConfig(null)
+    saveTwoStepConfig(null)
+    vaultKeyRef.current = null
+    setVaultConfig(null)
+    setUnlocked(true)
+    return { hadRemoteVault }
+  }, [])
+
   const enableTwoStep = useCallback(async (password: string, secret: string, code: string) => {
     if (!(await verifyTotp(secret, code))) throw new Error('That code doesn’t match. Check your authenticator and try again.')
     const { config, key } = await createVault(password, secret)
@@ -580,7 +603,7 @@ export default function App() {
     setUnlocked(false)
   }, [vaultConfig])
 
-  if (!unlocked) return <SecurityGate onUnlock={unlock} />
+  if (!unlocked) return <SecurityGate onUnlock={unlock} onReset={resetVault} />
 
   if (!loaded) return <div className="loading">Loading your second brain…</div>
 
