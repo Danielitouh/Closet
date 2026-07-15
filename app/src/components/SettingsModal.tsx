@@ -1,7 +1,15 @@
-import { useState } from 'react'
+import qrcode from 'qrcode-generator'
+import { useMemo, useState } from 'react'
 import type { SyncConfig } from '../lib/github'
 import { formatTotpSecret, generateTotpSecret, getOtpAuthUrl } from '../lib/twoStep'
 import type { VaultConfig } from '../lib/vault'
+
+function qrDataUrl(text: string): string {
+  const qr = qrcode(0, 'M')
+  qr.addData(text)
+  qr.make()
+  return qr.createDataURL(4, 8)
+}
 
 interface Props {
   config: SyncConfig
@@ -45,6 +53,20 @@ export default function SettingsModal({
   const [securityCode, setSecurityCode] = useState('')
   const [securityBusy, setSecurityBusy] = useState(false)
   const [securityError, setSecurityError] = useState<string | null>(null)
+  const [keyCopied, setKeyCopied] = useState(false)
+
+  const otpUrl = useMemo(() => getOtpAuthUrl(setupSecret), [setupSecret])
+  const qr = useMemo(() => qrDataUrl(otpUrl), [otpUrl])
+
+  async function copyKey() {
+    try {
+      await navigator.clipboard.writeText(setupSecret)
+      setKeyCopied(true)
+      setTimeout(() => setKeyCopied(false), 1500)
+    } catch {
+      /* clipboard blocked; the key is visible to type manually */
+    }
+  }
 
   async function enableTwoStep() {
     setSecurityBusy(true)
@@ -100,17 +122,21 @@ export default function SettingsModal({
               <p className="hint">
                 Create the vault: your notes get <b>end-to-end encrypted</b> with a key only your
                 password unlocks — nothing readable is ever stored on GitHub or the public site, and
-                sync only runs encrypted. Save the manual key in your authenticator app, choose a
-                vault password, then enter the current code. Enroll once; other devices with your
-                GitHub token pick up the lock automatically.
+                sync only runs encrypted. Add the key below to <b>Duo Mobile</b> (or any
+                authenticator), choose a vault password, then enter the current 6-digit code. Enroll
+                once; other devices with your GitHub token pick up the lock automatically.
               </p>
-              <div className="secret-box">
-                <span>Manual key</span>
-                <code>{formatTotpSecret(setupSecret)}</code>
+              <div className="totp-setup">
+                <img className="totp-qr" src={qr} alt="Authenticator QR code" width={148} height={148} />
+                <div className="totp-manual">
+                  <span className="totp-label">In Duo Mobile: tap ＋ → “Use a QR code” to scan, or “Enter code manually” and paste this key:</span>
+                  <code className="secret-code">{formatTotpSecret(setupSecret)}</code>
+                  <div className="row">
+                    <button type="button" className="btn" onClick={copyKey}>{keyCopied ? 'Copied ✓' : 'Copy key'}</button>
+                    <a className="btn" href={otpUrl}>Open in app</a>
+                  </div>
+                </div>
               </div>
-              <label>Authenticator setup URI
-                <input readOnly value={getOtpAuthUrl(setupSecret)} onFocus={(e) => e.currentTarget.select()} />
-              </label>
               <label>Unlock password
                 <input
                   type="password"
