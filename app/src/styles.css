@@ -470,6 +470,41 @@ kbd {
   color: var(--text);
 }
 
+/* --- TOTP / Duo enrollment ------------------------------------------------- */
+.totp-setup {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.22);
+  flex-wrap: wrap;
+}
+.totp-qr {
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px;
+  flex-shrink: 0;
+}
+.totp-manual {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.totp-label { font-size: 12px; color: var(--text-dim); line-height: 1.45; }
+.secret-code {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+.totp-manual .btn { text-decoration: none; }
+
 /* --- Toast ----------------------------------------------------------------- */
 .toast {
   position: fixed;
